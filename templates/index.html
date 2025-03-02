@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uptime Monitor</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; text-align: center; }
+        h2 { color: #333; }
+        table { width: 100%; max-width: 900px; margin: 20px auto; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007BFF; color: white; }
+        .up { color: green; font-weight: bold; }
+        .down { color: red; font-weight: bold; }
+        .button { padding: 10px 15px; margin: 10px; border: none; background-color: #007BFF; color: white; cursor: pointer; border-radius: 5px; }
+        .button:hover { background-color: #0056b3; }
+        .edit-btn { cursor: pointer; color: blue; text-decoration: underline; }
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; box-shadow: 0px 0px 10px rgba(0,0,0,0.3); border-radius: 8px; width: 300px; text-align: left; }
+        .popup h3 { margin-top: 0; }
+        .popup input, .popup select { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
+        .popup button { width: 100%; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <h2>Uptime Monitor</h2>
+
+    <button class="button" onclick="showPopup()">➕ Add New Check</button>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Address</th>
+                <th>Port</th>
+                <th>Status</th>
+                <th>Last Checked</th>
+                <th>Last Status Change</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="siteList"></tbody>
+    </table>
+
+    <!-- Popup for Adding/Editing -->
+    <div id="popup" class="popup">
+        <h3 id="popupTitle">Add New Check</h3>
+        <input type="hidden" id="entry_id">
+
+        <label>Name:</label>
+        <input type="text" id="entry_name" required>
+
+        <label>Type:</label>
+        <select id="entry_check_type">
+            <option value="URL">URL</option>
+            <option value="PING">Ping</option>
+            <option value="PORT">Port</option>
+            <option value="SCREEN">Screen Service</option>
+        </select>
+
+        <label>Address:</label>
+        <input type="text" id="entry_url" required>
+
+        <label class="hidden" id="portLabel">Port:</label>
+        <input type="number" id="entry_port" class="hidden">
+
+        <button class="button" onclick="saveEntry()">Save</button>
+        <button class="button" style="background-color: red;" onclick="$('#popup').hide();">Cancel</button>
+    </div>
+
+    <script>
+        function fetchStatus() {
+            $.get("/get_status", function(data) {
+                $("#siteList").empty();
+                data.forEach(site => {
+                    $("#siteList").append(
+                        `<tr>
+                            <td>${site.name}</td>
+                            <td>${site.check_type}</td>
+                            <td>${site.url}</td>
+                            <td>${site.port ? site.port : "-"}</td>
+                            <td class="${site.status === 'Up' ? 'up' : 'down'}">${site.status}</td>
+                            <td>${site.last_checked}</td>
+                            <td>${site.last_status_change}</td>
+                            <td><span class="edit-btn" onclick="editEntry('${site.id}', '${site.name}', '${site.check_type}', '${site.url}', '${site.port || ''}')">✏️ Edit</span></td>
+                        </tr>`
+                    );
+                });
+            });
+        }
+
+        function showPopup() {
+            $("#popupTitle").text("Add New Check");
+            $("#popup").show();
+            $("#entry_id").val("");
+            $("#entry_name").val("");
+            $("#entry_check_type").val("URL");
+            $("#entry_url").val("");
+            $("#entry_port").val("").hide();
+            $("#portLabel").hide();
+        }
+
+        function editEntry(id, name, check_type, url, port) {
+            $("#popupTitle").text("Edit Check");
+            $("#entry_id").val(id);
+            $("#entry_name").val(name);
+            $("#entry_check_type").val(check_type);
+            $("#entry_url").val(url);
+            $("#entry_port").val(port);
+
+            if (check_type === "PORT") {
+                $("#entry_port").show();
+                $("#portLabel").show();
+            } else {
+                $("#entry_port").hide();
+                $("#portLabel").hide();
+            }
+
+            $("#popup").show();
+        }
+
+        function saveEntry() {
+            const data = {
+                id: $("#entry_id").val(),
+                name: $("#entry_name").val(),
+                check_type: $("#entry_check_type").val(),
+                url: $("#entry_url").val(),
+                port: $("#entry_port").val() ? parseInt($("#entry_port").val()) : null
+            };
+
+            if (data.id) {
+                $.post("/edit_site", data, function() {
+                    $("#popup").hide();
+                    fetchStatus();
+                });
+            } else {
+                $.post("/add_site", data)
+                .done(function() {
+                    $("#popup").hide();
+                    fetchStatus();
+                })
+                .fail(function(response) {
+                    alert(response.responseJSON.error);
+                });
+            }
+        }
+
+        $("#entry_check_type").change(function() {
+            if ($(this).val() === "PORT") {
+                $("#entry_port").show();
+                $("#portLabel").show();
+            } else {
+                $("#entry_port").hide();
+                $("#portLabel").hide();
+            }
+        });
+
+        fetchStatus();
+        setInterval(fetchStatus, 10000);
+    </script>
+
+</body>
+</html>
