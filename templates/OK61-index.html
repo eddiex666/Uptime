@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uptime Monitor</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; text-align: center; margin: 0; padding: 20px; }
+        h2 { color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0px 4px 8px rgba(0,0,0,0.2); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007BFF; color: white; }
+        .button { padding: 10px 15px; margin: 10px; border: none; background-color: #007BFF; color: white; cursor: pointer; border-radius: 5px; }
+        .button:hover { background-color: #0056b3; }
+        .popup-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .popup { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 10px; width: 350px; text-align: left; box-shadow: 0px 4px 10px rgba(0,0,0,0.3); z-index: 1001; }
+        .popup h3 { text-align: center; }
+        .popup label { font-weight: bold; display: block; margin-top: 10px; }
+        .popup input, .popup select { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
+        .popup button { width: 100%; margin-top: 10px; padding: 10px; }
+        .popup-close { background: red; color: white; cursor: pointer; border: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Uptime Monitor</h2>
+
+        <button class="button" onclick="showPopup('agentPopup')">➕ Add Agent</button>
+        <button class="button" onclick="showPopup('monitorPopup')">➕ Add Check</button>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Agent</th>
+                    <th>Address</th>
+                    <th>Port</th>
+                    <th>Status</th>
+                    <th>Last Checked</th>
+                    <th>Last Status Change</th>
+                </tr>
+            </thead>
+            <tbody id="siteList"></tbody>
+        </table>
+    </div>
+
+    <!-- Add Agent Popup -->
+<div id="agentPopup" class="popup-overlay">
+    <div class="popup">
+        <h3>Add New Agent</h3>
+        <label>Name:</label>
+        <input type="text" id="agent_name">
+        <label>IP Address:</label>
+        <input type="text" id="agent_ip">
+        <label>Port:</label>
+        <input type="number" id="agent_port" value="8092">
+        <button onclick="saveAgent()" class="button">Save Agent</button>
+        <button onclick="closePopup('agentPopup')" class="popup-close">Cancel</button>
+    </div>
+</div>
+
+    <!-- Add Monitoring Check Popup -->
+    <div id="monitorPopup" class="popup-overlay">
+        <div class="popup">
+            <h3>Add New Check</h3>
+            <label>Name:</label>
+            <input type="text" id="entry_name">
+            <label>Agent:</label>
+            <select id="entry_agent">
+                <option value="null">Local</option>
+            </select>
+            <label>Type:</label>
+            <select id="entry_check_type">
+                <option value="URL">URL</option>
+                <option value="PING">Ping</option>
+                <option value="PORT">Port</option>
+                <option value="SCREEN">Screen Service</option>
+            </select>
+            <label>Address:</label>
+            <input type="text" id="entry_url">
+            <label id="portLabel" style="display:none;">Port:</label>
+            <input type="number" id="entry_port" style="display:none;">
+            <button onclick="saveEntry()" class="button">Save Check</button>
+            <button onclick="closePopup('monitorPopup')" class="popup-close">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        function showPopup(id) {
+            $("#" + id).fadeIn();
+            $("#" + id + " .popup").fadeIn();
+        }
+
+        function closePopup(id) {
+            $("#" + id).fadeOut();
+            $("#" + id + " .popup").fadeOut();
+        }
+
+
+function saveAgent() {
+    $.ajax({
+        url: "/add_agent",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({
+            name: $("#agent_name").val(),
+            ip_address: $("#agent_ip").val(),
+            port: $("#agent_port").val() ? parseInt($("#agent_port").val()) : 8092 // Default to 8092
+        }),
+        success: function() {
+            alert("Agent added successfully!");
+            closePopup("agentPopup");
+            fetchAgents();
+        },
+        error: function(response) {
+            alert(response.responseJSON.error);
+        }
+    });
+}
+
+
+        function saveEntry() {
+            $.ajax({
+                url: "/add_site",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    name: $("#entry_name").val(),
+                    agent_id: $("#entry_agent").val() !== "null" ? $("#entry_agent").val() : null,
+                    check_type: $("#entry_check_type").val(),
+                    url: $("#entry_url").val(),
+                    port: $("#entry_check_type").val() === "PORT" ? parseInt($("#entry_port").val()) : null
+                }),
+                success: function() {
+                    closePopup("monitorPopup");
+                    fetchStatus();
+                },
+                error: function(response) {
+                    alert(response.responseJSON.error);
+                }
+            });
+        }
+
+
+    function fetchStatus() {
+        $.get("/get_status", function(data) {
+            $("#siteList").empty();
+            data.forEach(site => {
+                let rowColor = site.status === "OK" ? "style='background-color: #d4edda; color: #155724;'" : 
+                              site.status === "ERROR" ? "style='background-color: #f8d7da; color: #721c24;'" : "";
+
+                $("#siteList").append(
+                    `<tr ${rowColor}>
+                        <td>${site.name}</td>
+                        <td>${site.check_type}</td>
+                        <td>${site.agent}</td>
+                        <td>${site.url}</td>
+                        <td>${site.port || "-"}</td>
+                        <td>${site.status}</td>
+                        <td>${site.last_checked}</td>
+                        <td>${site.last_status_change}</td>
+                        <td><button onclick="confirmDelete(${site.id})" class="delete-btn">🗑️ Delete</button></td>
+                    </tr>`
+                );
+            });
+        });
+    }
+
+    function confirmDelete(id) {
+        if (confirm("Are you sure you want to delete this check?")) {
+            $.ajax({
+                url: "/delete_site",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ id: id }),
+                success: function() {
+                    alert("Deleted successfully!");
+                    fetchStatus();
+                },
+                error: function(response) {
+                    alert("Error deleting: " + response.responseJSON.error);
+                }
+            });
+        }
+    }
+
+    setInterval(fetchStatus, 10000);
+
+
+    function fetchAgents() {
+        $.get("/get_agents", function(data) {
+            $("#entry_agent").empty().append('<option value="null">Local</option>');
+            data.forEach(agent => {
+                $("#entry_agent").append(
+                    `<option value="${agent.id}">${agent.name} (${agent.ip_address}:${agent.port})</option>`
+                );
+            });
+        });
+    }
+
+
+
+        $("#entry_check_type").change(function() {
+            if ($(this).val() === "PORT") {
+                $("#portLabel, #entry_port").show();
+            } else {
+                $("#portLabel, #entry_port").hide();
+            }
+        });
+
+        fetchStatus();
+        fetchAgents();
+        setInterval(fetchStatus, 10000);
+    </script>
+
+<style>
+    .delete-btn {
+        padding: 6px 12px;
+        background-color: red;
+        color: white;
+        border: none;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+    .delete-btn:hover {
+        background-color: darkred;
+    }
+</style>
+
+
+</body>
+</html>

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Uptime Monitor</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; text-align: center; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007BFF; color: white; }
+        .button { padding: 10px 15px; margin: 10px; border: none; background-color: #007BFF; color: white; cursor: pointer; border-radius: 5px; }
+        .button:hover { background-color: #0056b3; }
+
+        .popup-overlay {
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); 
+            z-index: 1000;
+        }
+        .popup {
+            display: none; 
+            position: absolute; 
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white; padding: 20px; 
+            border-radius: 10px; width: 350px; 
+            text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 1001;
+        }
+        .popup h3 { text-align: center; }
+        .popup label { font-weight: bold; display: block; margin-top: 10px; }
+        .popup input, .popup select { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
+        .popup button { width: 100%; margin-top: 10px; padding: 10px; }
+        .popup-close { background: red; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .edit-btn { background-color: orange; color: white; }
+        .edit-btn:hover { background-color: darkorange; }
+        .delete-btn { background-color: red; color: white; }
+        .delete-btn:hover { background-color: darkred; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Uptime Monitor</h2>
+
+    <button class="button" onclick="showAgentPopup()">➕ Add Agent</button>
+    <button class="button" onclick="showCheckPopup()">➕ Add Check</button>
+
+    <!-- Checks table -->
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Agent</th>
+                <th>Address</th>
+                <th>Port</th>
+                <th>Status</th>
+                <th>Last Checked</th>
+                <th>Last Status Change</th>
+            </tr>
+        </thead>
+        <tbody id="siteList"></tbody>
+    </table>
+
+    <!-- AGENTS -->
+    <h3>Agenter</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>IP Address</th>
+                <th>Port</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="agentList"></tbody>
+    </table>
+</div>
+
+<!-- Add/Edit Agent Popup -->
+<div id="agentPopup" class="popup-overlay">
+    <div class="popup">
+        <h3 id="agentPopupTitle">Add Agent</h3>
+        <input type="hidden" id="agent_id">
+        <label>Name:</label>
+        <input type="text" id="agent_name">
+        <label>IP Address:</label>
+        <input type="text" id="agent_ip">
+        <label>Port:</label>
+        <input type="number" id="agent_port" value="8092">
+        <button class="button" onclick="saveAgent()">Save Agent</button>
+        <button class="popup-close" onclick="closePopup('agentPopup')">Cancel</button>
+    </div>
+</div>
+
+<!-- Add/Edit Check Popup -->
+<div id="checkPopup" class="popup-overlay">
+    <div class="popup">
+        <h3 id="checkPopupTitle">Add Check</h3>
+        <input type="hidden" id="check_id">
+        <label>Name:</label>
+        <input type="text" id="check_name">
+
+        <label>Agent:</label>
+        <select id="check_agent">
+            <option value="null">Local</option>
+        </select>
+
+        <label>Type:</label>
+        <select id="check_type">
+            <option value="URL">URL</option>
+            <option value="PING">Ping</option>
+            <option value="PORT">Port</option>
+            <option value="SCREEN">Screen Service</option>
+        </select>
+
+        <label>Address:</label>
+        <input type="text" id="check_url">
+
+        <label id="checkPortLabel" style="display:none;">Port:</label>
+        <input type="number" id="check_port" style="display:none;">
+
+        <button class="button" onclick="saveCheck()">Save Check</button>
+        <button class="popup-close" onclick="closePopup('checkPopup')">Cancel</button>
+    </div>
+</div>
+
+<script>
+// ---------- AGENTS -------------
+function showAgentPopup(agent=null) {
+    if (agent) {
+        // Edit mode
+        $("#agent_id").val(agent.id);
+        $("#agent_name").val(agent.name);
+        $("#agent_ip").val(agent.ip_address);
+        $("#agent_port").val(agent.port);
+        $("#agentPopupTitle").text("Edit Agent");
+    } else {
+        // Add mode
+        $("#agent_id").val("");
+        $("#agent_name").val("");
+        $("#agent_ip").val("");
+        $("#agent_port").val("8092");
+        $("#agentPopupTitle").text("Add Agent");
+    }
+    document.getElementById("agentPopup").style.display = "block";
+    document.querySelector("#agentPopup .popup").style.display = "block";
+}
+
+function closePopup(id) {
+    document.getElementById(id).style.display = "none";
+    document.querySelector("#"+id+" .popup").style.display = "none";
+}
+
+function saveAgent() {
+    let agentId = $("#agent_id").val();
+    let route = agentId ? "/edit_agent" : "/add_agent";
+
+    $.ajax({
+        url: route,
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({
+            id: agentId || null,
+            name: $("#agent_name").val(),
+            ip_address: $("#agent_ip").val(),
+            port: $("#agent_port").val()
+        }),
+        success: function() {
+            alert("Agent saved successfully!");
+            closePopup("agentPopup");
+            fetchAgents(); // Oppdater tabell
+        },
+        error: function(res) {
+            alert("Error saving agent.");
+        }
+    });
+}
+
+function editAgent(agentId) {
+    // Hent agentinfo fra agentList for å fylle inn
+    $.get("/get_agents", function(data) {
+        let agent = data.find(a => a.id === agentId);
+        if (!agent) {
+            alert("Agent not found?");
+            return;
+        }
+        showAgentPopup(agent);
+    });
+}
+
+function deleteAgent(agentId) {
+    if (!confirm("Are you sure you want to delete this agent?")) return;
+    $.ajax({
+        url: "/delete_agent",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ id: agentId }),
+        success: function() {
+            alert("Agent deleted!");
+            fetchAgents();
+        },
+        error: function(res) {
+            alert("Error deleting agent.");
+        }
+    });
+}
+
+// Henter og viser agenter nederst
+function fetchAgents() {
+    $.get("/get_agents", function(data) {
+        // Oppdater tabell #agentList
+        let agentList = $("#agentList");
+        agentList.empty();
+
+        if (!data.length) {
+            agentList.append("<tr><td colspan='4'>No agents found.</td></tr>");
+            return;
+        }
+        data.forEach(agent => {
+            agentList.append(`
+            <tr>
+                <td>${agent.name}</td>
+                <td>${agent.ip_address}</td>
+                <td>${agent.port}</td>
+                <td>
+                    <button class="edit-btn" onclick="editAgent(${agent.id})">Edit</button>
+                    <button class="delete-btn" onclick="deleteAgent(${agent.id})">Delete</button>
+                </td>
+            </tr>`);
+        });
+
+        // Oppdater dropdown i check-popup
+        $("#check_agent").empty().append('<option value="null">Local</option>');
+        data.forEach(agent => {
+            $("#check_agent").append(
+                `<option value="${agent.id}">${agent.name} (${agent.ip_address}:${agent.port})</option>`
+            );
+        });
+    });
+}
+
+// ---------- CHECKS -------------
+function showCheckPopup(check=null) {
+    if (check) {
+        // Edit
+    } else {
+        // Add
+    }
+}
+
+// Legger til / redigerer en check
+function saveCheck() {
+    let siteId = $("#check_id").val();
+    let route = siteId ? "/edit_site" : "/add_site";
+
+    $.ajax({
+        url: route,
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({
+            id: siteId || null,
+            name: $("#check_name").val(),
+            agent_id: $("#check_agent").val() !== "null" ? $("#check_agent").val() : null,
+            check_type: $("#check_type").val(),
+            url: $("#check_url").val(),
+            port: ($("#check_type").val() === "PORT") ? parseInt($("#check_port").val()) : null
+        }),
+        success: function() {
+            alert("Check saved!");
+            closePopup("checkPopup");
+            fetchStatus();
+        },
+        error: function(res) {
+            alert("Error saving check.");
+        }
+    });
+}
+
+
+
+function fetchStatus() {
+    $.get("/get_status", function(data) {
+        $("#siteList").empty();
+        data.forEach(site => {
+            let rowColor = "";
+            if (site.status === "OK") {
+                rowColor = "style='background-color: #d4edda;'";
+            } else if (site.status === "ERROR") {
+                rowColor = "style='background-color: #f8d7da;'";
+            }
+            $("#siteList").append(`
+            <tr ${rowColor}>
+                <td>${site.name}</td>
+                <td>${site.check_type}</td>
+                <td>${site.agent}</td>
+                <td>${site.url}</td>
+                <td>${site.port || "-"}</td>
+                <td>${site.status}</td>
+                <td>${site.last_checked}</td>
+                <td>${site.last_status_change}</td>
+            </tr>
+            `);
+        });
+    });
+}
+
+
+function deleteSite(id) {
+    if (!confirm("Are you sure you want to delete this check?")) return;
+    $.ajax({
+        url: "/delete_site",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ id: id }),
+        success: function() {
+            alert("Deleted successfully!");
+            fetchStatus();
+        },
+        error: function(res) {
+            alert("Error deleting site.");
+        }
+    });
+}
+
+// Oppdater port-felt
+$("#check_type").change(function() {
+    if ($(this).val() === "PORT") {
+        $("#check_port").show();
+        $("#checkPortLabel").show();
+    } else {
+        $("#check_port").hide();
+        $("#checkPortLabel").hide();
+    }
+});
+
+// Init
+$(document).ready(function() {
+    fetchAgents(); 
+    fetchStatus();
+    setInterval(fetchStatus, 10000);
+});
+</script>
+
+</body>
+</html>

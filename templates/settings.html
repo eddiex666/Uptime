@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h2>⚙️ Settings</h2>
+    <button onclick="window.location.href='/'">⬅️ Back</button>
+
+    <h3>🔄 Check Interval</h3>
+    <input type="number" id="check_interval" value="{{ settings.check_interval }}" min="5">
+    <button onclick="saveSettings()">💾 Save Settings</button>
+
+    <h3>📧 Notifications</h3>
+    <input type="email" id="email" value="{{ settings.email }}">
+    <input type="text" id="phone" value="{{ settings.phone }}">
+</body>
+</html>
